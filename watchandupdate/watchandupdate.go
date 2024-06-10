@@ -47,18 +47,20 @@ type FileProcessor struct {
 	pathPatterns      []*regexp.Regexp
 	extensionPatterns []*regexp.Regexp
 	changeTypes       []ChangeType
-	// A function to call for matches on a file with (path+filename+extension, upon ChangeType, which isDir)
-	process func(string, ChangeType, bool)
+	// A function to call for matches on a file with (watchdir, path+filename+extension, ChangeType, which isDir)
+	process func(string, string, ChangeType, bool)
 }
 
 var watchDir string
 var firstDetection bool
+var debug bool
 
 func WatchAndUpdate() {
 
 	watchDir = "data" // Change this to your desired directory
 	initialFiles = make(map[string]FileInfo)
 	firstDetection = true
+	debug = false
 
 	filename := "data.txt"
 
@@ -103,7 +105,6 @@ func WatchAndUpdate() {
 				fmt.Println("Error reading file:", err)
 			} else {
 				fmt.Println("File content changed:", string(data))
-				readandreplace()
 				stat, err = os.Stat(filename)
 				if err != nil {
 					fmt.Println("Error statting file:", err)
@@ -144,28 +145,10 @@ func RegisterFileProcessor(processor FileProcessor) {
 	fileProcessors = append(fileProcessors, processor)
 }
 
-func sampleFileProcessorFunc(path string, changeType ChangeType, isDir bool) {
+func sampleFileProcessorFunc(watchDir string, path string, changeType ChangeType, isDir bool) {
 
 	fmt.Printf("File %s changed: %s\n", path, convertChangeTypeToString(changeType))
 
-	// Replace token with function
-	newContent := `
-Here is my templated daily note.
-
-Tomorrow is [[2024-04-27]]...
-Yesterday was [[2024-04-25]]...
-	`
-	newContent = replaceDateTokenRegexp(newContent)
-
-	// Write output
-	err := ioutil.WriteFile(path, []byte(newContent), 0644)
-
-	if err != nil {
-		fmt.Println("Error writing file:", err)
-		return
-	}
-
-	fmt.Println("Successfully replaced date token and written.")
 }
 
 func walkDirCallback(path string, info os.FileInfo, err error) error {
@@ -204,7 +187,10 @@ func walkDirCallback(path string, info os.FileInfo, err error) error {
 
 func processfilechange(changeType ChangeType, fileWithPath string, isDir bool) {
 
-	fmt.Println("File change detected:", changeType, fileWithPath, isDir)
+	// Print the change type if debug is set to true
+	if debug {
+		fmt.Println("File change detected:", convertChangeTypeToString(changeType), fileWithPath, isDir)
+	}
 
 	// Given the full path of the file, extract the path, the filename, and the extension.
 	path := filepath.Dir(fileWithPath)
@@ -213,9 +199,11 @@ func processfilechange(changeType ChangeType, fileWithPath string, isDir bool) {
 
 	// Print the path, filename, and extension
 
-	fmt.Println("Path:", path)
-	fmt.Println("Filename:", filename)
-	fmt.Println("Extension:", extension)
+	if debug {
+		fmt.Println("Path:", path)
+		fmt.Println("Filename:", filename)
+		fmt.Println("Extension:", extension)
+	}
 
 	// Call all registered file processors
 	for _, processor := range fileProcessors {
@@ -261,9 +249,9 @@ func processfilechange(changeType ChangeType, fileWithPath string, isDir bool) {
 
 		// Make sure the changeType matches at least one of the processor's changeTypes
 		changeTypeMatches := false
-		for _, changeType := range processor.changeTypes {
+		for _, processorChangeType := range processor.changeTypes {
 
-			if changeType == changeType {
+			if changeType == processorChangeType {
 				changeTypeMatches = true
 				break
 			}
@@ -272,55 +260,7 @@ func processfilechange(changeType ChangeType, fileWithPath string, isDir bool) {
 			continue
 		}
 
-		processor.process(fileWithPath, changeType, isDir)
+		processor.process(watchDir, fileWithPath, changeType, isDir)
 	}
 
-}
-
-func readandreplace() {
-
-	inputFile := "data.txt"
-
-	// Read input file
-	data, err := ioutil.ReadFile(inputFile)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-		return
-	}
-
-	// Replace token with function
-	newContent := string(data)
-	newContent = replaceDateTokenRegexp(newContent)
-
-	// Write output
-	err = ioutil.WriteFile(inputFile, []byte(newContent), 0644)
-
-	if err != nil {
-		fmt.Println("Error writing file:", err)
-		return
-	}
-
-	fmt.Println("Successfully replaced date token and written.")
-}
-
-func replaceDateTokenRegexp(content string) string {
-	// Regex for the token with capturing group
-	//dateRegex := regexp.MustCompile(`¥\|(.+?)\|¥`)
-	dateRegex := regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
-
-	// Replace function
-	return dateRegex.ReplaceAllStringFunc(content, func(match string) string {
-		// Extract captured date
-		capturedDate := dateRegex.FindStringSubmatch(match)[0]
-
-		// Parse the date
-		date, err := time.Parse("2006-01-02", capturedDate)
-		if err != nil {
-			fmt.Println("Error parsing captured date:", err)
-			return match // Return unchanged if parsing fails
-		}
-
-		// Replace with date one day later
-		return date.AddDate(0, 0, 1).Format("2006-01-02")
-	})
 }

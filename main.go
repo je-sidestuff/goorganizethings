@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/preaje/goorganizethings/focusblock"
@@ -58,20 +59,18 @@ func main() {
 	var buildOpt2 string
 	buildCmd.StringVar(&buildOpt2, "opt2", "", "Optional argument 2")
 
-	// Define run subcommand and its flags
-	runCmd := flag.NewFlagSet("run", flag.ExitOnError)
-	var runCmdStr string
-	runCmd.StringVar(&runCmdStr, "cmd", "", "Command to run")
-	var runArgs string
-	runCmd.StringVar(&runArgs, "args", "", "Arguments for the command")
-	var runFlag1 string
-	runCmd.StringVar(&runFlag1, "flag1", "", "Mandatory flag 1")
-	var runFlag2 string
-	runCmd.StringVar(&runFlag2, "flag2", "", "Mandatory flag 2")
-	var runOpt1 string
-	runCmd.StringVar(&runOpt1, "opt1", "", "Optional argument 1")
-	var runOpt2 string
-	runCmd.StringVar(&runOpt2, "opt2", "", "Optional argument 2")
+	// Define focus subcommand and its flags
+	focusBlockCmd := flag.NewFlagSet("focus", flag.ExitOnError)
+	var focusBlockYear int
+	focusBlockCmd.IntVar(&focusBlockYear, "year", -1, "Year of the focus block. Defaults to current year.")
+	var focusBlockMonth int
+	focusBlockCmd.IntVar(&focusBlockMonth, "month", -1, "Month of the focus block. Defaults to current month.")
+	var focusBlockDay string
+	focusBlockCmd.StringVar(&focusBlockDay, "day", "today", "Day of the focus block. Defaults to current day. Accepts today, yesterday, tomorrow, or a numeric day of the month. Mutually exclusive with -year and -month if non-numeric.")
+	var focusBlockLength int
+	focusBlockCmd.IntVar(&focusBlockLength, "length", 30, "Length of the focus block in days. Defaults to 30 days.")
+	var focusBlockContent string
+	focusBlockCmd.StringVar(&focusBlockContent, "content", "", "Content of the focus block. Defaults to empty string.")
 
 	// Define watch subcommand and its flags
 	watchCmd := flag.NewFlagSet("watch", flag.ExitOnError)
@@ -118,12 +117,57 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "run":
-		if err := runCmd.Parse(os.Args[2:]); err != nil {
+	case "focus":
+		if err := focusBlockCmd.Parse(os.Args[2:]); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
-		fmt.Println(focusblock.PrintFocusDays(2022, 7, 6, 30, "Hello, World!"))
+
+		focusBlockDayNumeric := -1
+
+		// Validate day flag if non-numeric
+		if focusBlockDay == "today" || focusBlockDay == "yesterday" || focusBlockDay == "tomorrow" {
+
+			// Ensure that month and year are not set, error if they are
+			if focusBlockMonth != -1 || focusBlockYear != -1 {
+				fmt.Println("Error: -month and -year are mutually exclusive with non-numeric -day")
+				os.Exit(1)
+			}
+
+			var focusBlockDate time.Time
+
+			switch focusBlockDay {
+			case "today":
+				focusBlockDate = time.Now()
+			case "yesterday":
+				focusBlockDate = time.Now().AddDate(0, 0, -1)
+			case "tomorrow":
+				focusBlockDate = time.Now().AddDate(0, 0, 1)
+			}
+
+			focusBlockDayNumeric = focusBlockDate.Day()
+			focusBlockMonth = int(focusBlockDate.Month())
+			focusBlockYear = focusBlockDate.Year()
+
+			// Validate numeric day
+		} else if _, err := strconv.Atoi(focusBlockDay); err != nil {
+			fmt.Println("Error: -day must be either today, yesterday, tomorrow, or a numeric day of the month")
+			os.Exit(1)
+		} else {
+			focusBlockDayNumeric, _ = strconv.Atoi(focusBlockDay)
+		}
+
+		// If month is -1, set it to current month
+		if focusBlockMonth == -1 {
+			focusBlockMonth = int(time.Now().Month())
+		}
+
+		// If year is -1, set it to current year
+		if focusBlockYear == -1 {
+			focusBlockYear = time.Now().Year()
+		}
+
+		fmt.Println(focusblock.PrintFocusDays(focusBlockYear, focusBlockMonth, focusBlockDayNumeric, focusBlockLength, focusBlockContent))
 
 	case "watch":
 		if err := watchCmd.Parse(os.Args[2:]); err != nil {
@@ -137,8 +181,4 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Validate flags and print information based on chosen subcommand
-	// (similar logic as before)
-
-	// ... (Your code to handle build or run subcommand logic)
 }
